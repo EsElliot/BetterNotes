@@ -18,6 +18,12 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 import kotlinx.coroutines.flow.combine
+import android.os.Build
+import android.content.Intent
+import android.app.PendingIntent
+import android.content.Context
+import com.example.data.Reminder
+import com.example.sync.ReminderReceiver
 
 class NotesViewModel(
     application: Application,
@@ -28,6 +34,53 @@ class NotesViewModel(
     private val _isSyncing = MutableStateFlow(false)
     val isSyncing = _isSyncing.asStateFlow()
     
+    val reminders: StateFlow<List<Reminder>> = repository.allReminders
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun addReminder(context: Context, title: String, timeInMillis: Long) {
+        viewModelScope.launch {
+            val id = repository.insertReminder(Reminder(title = title, timeInMillis = timeInMillis))
+            scheduleReminder(context, Reminder(id = id.toInt(), title = title, timeInMillis = timeInMillis))
+        }
+    }
+
+    fun deleteReminder(context: Context, reminder: Reminder) {
+        viewModelScope.launch {
+            repository.deleteReminder(reminder)
+            cancelReminder(context, reminder.id)
+        }
+    }
+
+    private fun scheduleReminder(context: Context, reminder: Reminder) {
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
+        val intent = Intent(context, ReminderReceiver::class.java).apply {
+            putExtra("id", reminder.id)
+            putExtra("title", reminder.title)
+        }
+        val pendingIntent = PendingIntent.getBroadcast(
+            context, reminder.id, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (alarmManager.canScheduleExactAlarms()) {
+                alarmManager.setExactAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, reminder.timeInMillis, pendingIntent)
+            } else {
+                alarmManager.setAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, reminder.timeInMillis, pendingIntent)
+            }
+        } else {
+            alarmManager.setExactAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, reminder.timeInMillis, pendingIntent)
+        }
+    }
+
+    private fun cancelReminder(context: Context, reminderId: Int) {
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
+        val intent = Intent(context, ReminderReceiver::class.java)
+        val pendingIntent = PendingIntent.getBroadcast(
+            context, reminderId, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        alarmManager.cancel(pendingIntent)
+    }
+
     private val _searchQuery = MutableStateFlow("")
     val searchQuery = _searchQuery.asStateFlow()
 

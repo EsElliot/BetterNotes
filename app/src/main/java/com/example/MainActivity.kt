@@ -32,7 +32,7 @@ class MainActivity : ComponentActivity() {
     }
     
     private val repository by lazy {
-        NoteRepository(db.noteDao())
+        NoteRepository(db.noteDao(), db.reminderDao())
     }
 
     private val viewModel: NotesViewModel by viewModels {

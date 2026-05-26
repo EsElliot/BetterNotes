@@ -57,6 +57,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -91,6 +92,7 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.AccountCircle
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -138,6 +140,43 @@ fun NotesScreen(
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Medium
                         ) 
+                    },
+                    actions = {
+                        val context = LocalContext.current
+                        val isSyncing by viewModel.isSyncing.collectAsStateWithLifecycle()
+                        val googleSignInLauncher = rememberLauncherForActivityResult(
+                            contract = ActivityResultContracts.StartActivityForResult()
+                        ) { result ->
+                            if (result.resultCode == Activity.RESULT_OK) {
+                                val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+                                try {
+                                    val account = task.getResult(com.google.android.gms.common.api.ApiException::class.java)
+                                    if (account != null) {
+                                        viewModel.syncNotes(account)
+                                    }
+                                } catch (e: Exception) {
+                                }
+                            }
+                        }
+                        
+                        if (isSyncing) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(24.dp).padding(end = 16.dp),
+                                color = MaterialTheme.colorScheme.primary,
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            IconButton(onClick = {
+                                val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                                    .requestEmail()
+                                    .requestScopes(Scope("https://www.googleapis.com/auth/drive.appdata"))
+                                    .build()
+                                val mGoogleSignInClient = GoogleSignIn.getClient(context, gso)
+                                googleSignInLauncher.launch(mGoogleSignInClient.signInIntent)
+                            }) {
+                                Icon(Icons.Filled.AccountCircle, contentDescription = "Google Sync")
+                            }
+                        }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
                         containerColor = Color.Transparent,
@@ -224,12 +263,125 @@ fun NotesScreen(
                 }
             }
         } else if (currentRoute == "reminders") {
-            Box(Modifier.fillMaxSize().padding(innerPadding), contentAlignment = Alignment.Center) {
-                Text("Раздел в разработке (Напоминания)")
+            val reminders by viewModel.reminders.collectAsStateWithLifecycle()
+            val context = LocalContext.current
+            var showAddReminder by remember { mutableStateOf(false) }
+
+            if (showAddReminder) {
+                var title by remember { mutableStateOf("") }
+                var showDatePicker by remember { mutableStateOf(true) }
+                var showTimePicker by remember { mutableStateOf(false) }
+                var selectedTimeInMillis by remember { mutableStateOf(0L) }
+                
+                if (showDatePicker) {
+                    DisposableEffect(Unit) {
+                        val cal = java.util.Calendar.getInstance()
+                        val dialog = android.app.DatePickerDialog(
+                            context,
+                            { _, year, month, day ->
+                                cal.set(year, month, day)
+                                selectedTimeInMillis = cal.timeInMillis
+                                showDatePicker = false
+                                showTimePicker = true
+                            },
+                            cal.get(java.util.Calendar.YEAR),
+                            cal.get(java.util.Calendar.MONTH),
+                            cal.get(java.util.Calendar.DAY_OF_MONTH)
+                        )
+                        dialog.setOnCancelListener { showAddReminder = false }
+                        dialog.show()
+                        onDispose { dialog.dismiss() }
+                    }
+                }
+                
+                if (showTimePicker) {
+                    DisposableEffect(Unit) {
+                        val cal = java.util.Calendar.getInstance()
+                        val dialog = android.app.TimePickerDialog(
+                            context,
+                            { _, hour, minute ->
+                                val finalCal = java.util.Calendar.getInstance()
+                                finalCal.timeInMillis = selectedTimeInMillis
+                                finalCal.set(java.util.Calendar.HOUR_OF_DAY, hour)
+                                finalCal.set(java.util.Calendar.MINUTE, minute)
+                                finalCal.set(java.util.Calendar.SECOND, 0)
+                                selectedTimeInMillis = finalCal.timeInMillis
+                                showTimePicker = false
+                            },
+                            cal.get(java.util.Calendar.HOUR_OF_DAY),
+                            cal.get(java.util.Calendar.MINUTE),
+                            true
+                        )
+                        dialog.setOnCancelListener { showAddReminder = false }
+                        dialog.show()
+                        onDispose { dialog.dismiss() }
+                    }
+                }
+
+                if (!showDatePicker && !showTimePicker) {
+                    AlertDialog(
+                        onDismissRequest = { showAddReminder = false },
+                        title = { Text("Новое напоминание") },
+                        text = {
+                            OutlinedTextField(
+                                value = title,
+                                onValueChange = { title = it },
+                                placeholder = { Text("О чем напомнить?") }
+                            )
+                        },
+                        confirmButton = {
+                            TextButton(onClick = { 
+                                viewModel.addReminder(context, title, selectedTimeInMillis)
+                                showAddReminder = false 
+                            }) { Text("Сохранить") }
+                        }
+                    )
+                }
+            }
+
+            Scaffold(
+                modifier = Modifier.padding(innerPadding),
+                floatingActionButton = {
+                    FloatingActionButton(onClick = { showAddReminder = true }) {
+                        Icon(Icons.Filled.Add, "Добавить")
+                    }
+                }
+            ) { padding ->
+                if (reminders.isEmpty()) {
+                    Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+                        Text("Нет активных напоминаний")
+                    }
+                } else {
+                    androidx.compose.foundation.lazy.LazyColumn(
+                        modifier = Modifier.fillMaxSize().padding(padding),
+                        contentPadding = PaddingValues(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        items(reminders.size) { i ->
+                            val r = reminders[i]
+                            Card {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column {
+                                        Text(r.title, style = MaterialTheme.typography.titleMedium)
+                                        Spacer(Modifier.height(4.dp))
+                                        Text(SimpleDateFormat("dd MMM yyyy, HH:mm", Locale.getDefault()).format(Date(r.timeInMillis)), style = MaterialTheme.typography.bodySmall)
+                                    }
+                                    IconButton(onClick = { viewModel.deleteReminder(context, r) }) {
+                                        Icon(Icons.Filled.Delete, "Удалить")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         } else if (currentRoute == "menu") {
             Box(modifier = Modifier.padding(innerPadding)) {
-                SettingsBottomSheet(viewModel = viewModel, themeViewModel = themeViewModel, onDismiss = {})
+                SettingsScreen(viewModel = viewModel, themeViewModel = themeViewModel)
             }
         }
     }
@@ -349,12 +501,10 @@ fun NoteItem(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsBottomSheet(
+fun SettingsScreen(
     viewModel: NotesViewModel,
-    themeViewModel: ThemeViewModel,
-    onDismiss: () -> Unit
+    themeViewModel: ThemeViewModel
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val context = LocalContext.current
     val isSyncing by viewModel.isSyncing.collectAsStateWithLifecycle()
     val themeMode by themeViewModel.themeMode.collectAsStateWithLifecycle()
@@ -421,18 +571,12 @@ fun SettingsBottomSheet(
         }
     }
 
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = MaterialTheme.colorScheme.background,
-        shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 32.dp, end = 32.dp, top = 16.dp, bottom = 48.dp)
-        ) {
-            Text(
+        Text(
                 text = "Настройки",
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
@@ -487,7 +631,6 @@ fun SettingsBottomSheet(
                 Text("О приложении")
             }
         }
-    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -519,7 +662,11 @@ fun AddNoteScreen(
                         val intent = android.content.Intent(android.provider.AlarmClock.ACTION_SET_ALARM).apply {
                             putExtra(android.provider.AlarmClock.EXTRA_MESSAGE, title.ifEmpty { "Напоминание (BetterNotes)" })
                         }
-                        context.startActivity(intent)
+                        try {
+                            context.startActivity(intent)
+                        } catch (e: Exception) {
+                            android.widget.Toast.makeText(context, "Приложение часов не найдено", android.widget.Toast.LENGTH_SHORT).show()
+                        }
                     }) {
                         Icon(Icons.Filled.Notifications, contentDescription = "Напоминание")
                     }
@@ -616,6 +763,36 @@ fun AddNoteScreen(
                     .fillMaxSize()
                     .padding(horizontal = 16.dp),
                 placeholder = { Text(stringResource(R.string.content_hint)) },
+                visualTransformation = object : androidx.compose.ui.text.input.VisualTransformation {
+                    override fun filter(text: androidx.compose.ui.text.AnnotatedString): androidx.compose.ui.text.input.TransformedText {
+                        val builder = androidx.compose.ui.text.AnnotatedString.Builder()
+                        val textStr = text.text
+                        val lines = textStr.split("\n")
+                        var i = 0
+                        for (line in lines) {
+                            if (line.startsWith("- [ ] ")) {
+                                builder.append("☐ ")
+                                builder.pushStyle(androidx.compose.ui.text.SpanStyle(fontSize = 1.sp, color = Color.Transparent))
+                                builder.append("    ")
+                                builder.pop()
+                                builder.append(line.substring(6))
+                            } else if (line.startsWith("- [x] ")) {
+                                builder.append("☑ ")
+                                builder.pushStyle(androidx.compose.ui.text.SpanStyle(fontSize = 1.sp, color = Color.Transparent))
+                                builder.append("    ")
+                                builder.pop()
+                                builder.pushStyle(androidx.compose.ui.text.SpanStyle(textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough, color = Color.Gray))
+                                builder.append(line.substring(6))
+                                builder.pop()
+                            } else {
+                                builder.append(line)
+                            }
+                            i++
+                            if (i < lines.size) builder.append("\n")
+                        }
+                        return androidx.compose.ui.text.input.TransformedText(builder.toAnnotatedString(), androidx.compose.ui.text.input.OffsetMapping.Identity)
+                    }
+                },
                 colors = OutlinedTextFieldDefaults.colors(
                     unfocusedBorderColor = Color.Transparent,
                     focusedBorderColor = Color.Transparent
