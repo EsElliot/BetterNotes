@@ -33,15 +33,15 @@ class NotesViewModel(
             initialValue = emptyList()
         )
 
-    fun addNote(title: String, content: String) {
+    fun updateNote(id: Int, title: String, content: String, textSize: Float, isBold: Boolean, isItalic: Boolean, fontFamily: String) {
         viewModelScope.launch {
-            repository.insert(Note(title = title, content = content))
+            repository.insert(Note(id = id, title = title, content = content, textSize = textSize, isBold = isBold, isItalic = isItalic, fontFamily = fontFamily))
         }
     }
 
-    fun updateNote(id: Int, title: String, content: String) {
+    fun addNote(title: String, content: String, textSize: Float, isBold: Boolean, isItalic: Boolean, fontFamily: String) {
         viewModelScope.launch {
-            repository.insert(Note(id = id, title = title, content = content))
+            repository.insert(Note(title = title, content = content, textSize = textSize, isBold = isBold, isItalic = isItalic, fontFamily = fontFamily))
         }
     }
 
