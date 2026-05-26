@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">Заметки</string>
+    <string name="add_note">Добавить заметку</string>
+    <string name="title_hint">Заголовок</string>
+    <string name="content_hint">Текст заметки...</string>
+    <string name="save">Сохранить</string>
+    <string name="cancel">Отмена</string>
+    <string name="empty_notes">Пока нет заметок. Добавьте первую!</string>
+</resources>
