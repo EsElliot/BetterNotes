@@ -67,6 +67,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.withStyle
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.IconToggleButton
@@ -86,6 +87,11 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.Notifications
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NotesScreen(
@@ -95,117 +101,135 @@ fun NotesScreen(
 ) {
     val notes by viewModel.notes.collectAsStateWithLifecycle()
     var showAddNoteSheet by remember { mutableStateOf(false) }
-    var showSettingsSheet by remember { mutableStateOf(false) }
     var noteToEdit by remember { mutableStateOf<Note?>(null) }
+    var currentRoute by remember { mutableStateOf("notes") }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
         containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
-            TopAppBar(
-                title = { 
-                    Text(
-                        text = stringResource(R.string.app_name),
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Medium
-                    ) 
-                },
-                navigationIcon = {
-                    IconButton(onClick = { showSettingsSheet = true }) {
-                        Icon(imageVector = Icons.Filled.Menu, contentDescription = "Меню")
-                    }
-                },
-                actions = {
-                    Box(
-                        modifier = Modifier
-                            .padding(end = 16.dp)
-                            .size(32.dp)
-                            .background(MaterialTheme.colorScheme.primary, shape = CircleShape),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text("JD", color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Transparent,
+        bottomBar = {
+            NavigationBar {
+                NavigationBarItem(
+                    icon = { Icon(Icons.AutoMirrored.Filled.List, contentDescription = "Заметки") },
+                    label = { Text("Заметки") },
+                    selected = currentRoute == "notes",
+                    onClick = { currentRoute = "notes" }
                 )
-            )
+                NavigationBarItem(
+                    icon = { Icon(Icons.Filled.Notifications, contentDescription = "Напоминания") },
+                    label = { Text("Напоминания") },
+                    selected = currentRoute == "reminders",
+                    onClick = { currentRoute = "reminders" }
+                )
+                NavigationBarItem(
+                    icon = { Icon(Icons.Filled.Menu, contentDescription = "Меню") },
+                    label = { Text("Меню") },
+                    selected = currentRoute == "menu",
+                    onClick = { currentRoute = "menu" }
+                )
+            }
+        },
+        topBar = {
+            if (currentRoute == "notes") {
+                TopAppBar(
+                    title = { 
+                        Text(
+                            text = stringResource(R.string.app_name),
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Medium
+                        ) 
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color.Transparent,
+                    )
+                )
+            } else if (currentRoute == "reminders") {
+                TopAppBar(title = { Text("Напоминания") })
+            } else {
+                TopAppBar(title = { Text("Меню") })
+            }
         },
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = { 
-                    noteToEdit = null
-                    showAddNoteSheet = true 
-                },
-                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                shape = RoundedCornerShape(16.dp)
-            ) {
-                Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.add_note))
+            if (currentRoute == "notes") {
+                FloatingActionButton(
+                    onClick = { 
+                        noteToEdit = null
+                        showAddNoteSheet = true 
+                    },
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.add_note))
+                }
             }
         }
     ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-        ) {
-            Box(
+        if (currentRoute == "notes") {
+            Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
-                    .height(48.dp)
-                    .background(
-                        MaterialTheme.colorScheme.surfaceVariant,
-                        RoundedCornerShape(24.dp)
-                    ),
-                contentAlignment = Alignment.CenterStart
+                    .fillMaxSize()
+                    .padding(innerPadding)
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(horizontal = 16.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Search, 
-                        contentDescription = "Search", 
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { viewModel.setSearchQuery(it) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    placeholder = { Text("Поиск заметок") },
+                    leadingIcon = { Icon(Icons.Filled.Search, contentDescription = "Поиск") },
+                    shape = RoundedCornerShape(24.dp),
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        unfocusedBorderColor = Color.Transparent,
+                        focusedBorderColor = Color.Transparent
                     )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text("Search your notes", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
-                }
-            }
-            
-            if (notes.isEmpty()) {
-                Box(
-                    modifier = Modifier.fillMaxSize().weight(1f),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = stringResource(R.string.empty_notes),
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.secondary
-                    )
-                }
-            } else {
-                LazyVerticalStaggeredGrid(
-                    columns = StaggeredGridCells.Fixed(2),
-                    modifier = Modifier.fillMaxSize().weight(1f),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
-                    verticalItemSpacing = 12.dp,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    itemsIndexed(notes, key = { _, note -> note.id }) { index, note ->
-                        NoteItem(
-                            note = note,
-                            index = index,
-                            onClick = {
-                                noteToEdit = note
-                                showAddNoteSheet = true
-                            },
-                            onDeleteClick = { viewModel.deleteNote(note.id) }
+                )
+                
+                if (notes.isEmpty()) {
+                    Box(
+                        modifier = Modifier.fillMaxSize().weight(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = stringResource(R.string.empty_notes),
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.secondary
                         )
                     }
+                } else {
+                    LazyVerticalStaggeredGrid(
+                        columns = StaggeredGridCells.Fixed(2),
+                        modifier = Modifier.fillMaxSize().weight(1f),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
+                        verticalItemSpacing = 12.dp,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        itemsIndexed(notes, key = { _, note -> note.id }) { index, note ->
+                            NoteItem(
+                                note = note,
+                                index = index,
+                                onClick = {
+                                    noteToEdit = note
+                                    showAddNoteSheet = true
+                                },
+                                onDeleteClick = { viewModel.deleteNote(note.id) }
+                            )
+                        }
+                    }
                 }
+            }
+        } else if (currentRoute == "reminders") {
+            Box(Modifier.fillMaxSize().padding(innerPadding), contentAlignment = Alignment.Center) {
+                Text("Раздел в разработке (Напоминания)")
+            }
+        } else if (currentRoute == "menu") {
+            Box(modifier = Modifier.padding(innerPadding)) {
+                SettingsBottomSheet(viewModel = viewModel, themeViewModel = themeViewModel, onDismiss = {})
             }
         }
     }
@@ -228,14 +252,6 @@ fun NotesScreen(
                 }
             )
         }
-    }
-
-    if (showSettingsSheet) {
-        SettingsBottomSheet(
-            viewModel = viewModel,
-            themeViewModel = themeViewModel,
-            onDismiss = { showSettingsSheet = false }
-        )
     }
 }
 
@@ -344,11 +360,45 @@ fun SettingsBottomSheet(
     val themeMode by themeViewModel.themeMode.collectAsStateWithLifecycle()
     var showAboutDialog by remember { mutableStateOf(false) }
 
+    val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
     if (showAboutDialog) {
         AlertDialog(
             onDismissRequest = { showAboutDialog = false },
             title = { Text("О приложении") },
-            text = { Text("Заметки.\nВерсия 1.0\nСоздано в AI Studio.") },
+            text = {
+                Column {
+                    Text("BetterNotes", style = MaterialTheme.typography.titleMedium)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text("Версия 1.1")
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    val annotatedText = androidx.compose.ui.text.buildAnnotatedString {
+                        append("Создано ")
+                        pushStringAnnotation(tag = "URL", annotation = "https://github.com/EsElliot/BetterNotes")
+                        withStyle(style = androidx.compose.ui.text.SpanStyle(
+                            color = MaterialTheme.colorScheme.primary,
+                            textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline
+                        )) {
+                            append("EsElliot")
+                        }
+                        pop()
+                        append(" с помощью инструмента Gemini 3.1 Pro")
+                    }
+                    androidx.compose.foundation.text.ClickableText(
+                        text = annotatedText,
+                        style = androidx.compose.ui.text.TextStyle(
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 14.sp
+                        ),
+                        onClick = { offset ->
+                            annotatedText.getStringAnnotations(tag = "URL", start = offset, end = offset)
+                                .firstOrNull()?.let { annotation ->
+                                    uriHandler.openUri(annotation.item)
+                                }
+                        }
+                    )
+                }
+            },
             confirmButton = {
                 TextButton(onClick = { showAboutDialog = false }) { Text("ОК") }
             }
@@ -454,6 +504,7 @@ fun AddNoteScreen(
     var isItalic by remember { mutableStateOf(note?.isItalic ?: false) }
     var fontFamily by remember { mutableStateOf(note?.fontFamily ?: "SansSerif") }
 
+    val context = LocalContext.current
     Scaffold(
         topBar = {
             TopAppBar(
@@ -464,6 +515,14 @@ fun AddNoteScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = {
+                        val intent = android.content.Intent(android.provider.AlarmClock.ACTION_SET_ALARM).apply {
+                            putExtra(android.provider.AlarmClock.EXTRA_MESSAGE, title.ifEmpty { "Напоминание (BetterNotes)" })
+                        }
+                        context.startActivity(intent)
+                    }) {
+                        Icon(Icons.Filled.Notifications, contentDescription = "Напоминание")
+                    }
                     IconButton(onClick = {
                         if (title.isNotBlank() || content.isNotBlank()) {
                             onSave(note?.id, title.ifBlank { "Без названия" }, content, textSize, isBold, isItalic, fontFamily)
@@ -505,6 +564,10 @@ fun AddNoteScreen(
                 }
                 
                 VerticalDivider(modifier = Modifier.height(24.dp))
+                
+                IconButton(onClick = { content += "\n- [ ] " }) {
+                    Text("[ ]", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                }
                 
                 Box {
                     var expanded by remember { mutableStateOf(false) }

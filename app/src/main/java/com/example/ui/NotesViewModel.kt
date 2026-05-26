@@ -17,6 +17,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+import kotlinx.coroutines.flow.combine
+
 class NotesViewModel(
     application: Application,
     private val repository: NoteRepository
@@ -25,13 +27,29 @@ class NotesViewModel(
     private val syncManager = GoogleDriveSyncManager(application, repository)
     private val _isSyncing = MutableStateFlow(false)
     val isSyncing = _isSyncing.asStateFlow()
+    
+    private val _searchQuery = MutableStateFlow("")
+    val searchQuery = _searchQuery.asStateFlow()
 
     val notes: StateFlow<List<Note>> = repository.allNotes
+        .combine(_searchQuery) { notesList, query ->
+            if (query.isBlank()) {
+                notesList
+            } else {
+                notesList.filter { 
+                    it.title.contains(query, ignoreCase = true) || it.content.contains(query, ignoreCase = true) 
+                }
+            }
+        }
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = emptyList()
         )
+
+    fun setSearchQuery(query: String) {
+        _searchQuery.value = query
+    }
 
     fun updateNote(id: Int, title: String, content: String, textSize: Float, isBold: Boolean, isItalic: Boolean, fontFamily: String) {
         viewModelScope.launch {
