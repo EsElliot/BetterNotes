@@ -31,7 +31,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private val viewModel: NotesViewModel by viewModels {
-        NotesViewModelFactory(repository)
+        NotesViewModelFactory(application, repository)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

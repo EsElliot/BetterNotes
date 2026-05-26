@@ -1,6 +1,7 @@
 package com.example.ui
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,6 +24,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Menu
+import android.app.Activity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.android.gms.common.api.Scope
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
@@ -70,6 +79,8 @@ fun NotesScreen(
 ) {
     val notes by viewModel.notes.collectAsStateWithLifecycle()
     var showAddNoteSheet by remember { mutableStateOf(false) }
+    var showSettingsSheet by remember { mutableStateOf(false) }
+    var noteToEdit by remember { mutableStateOf<Note?>(null) }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -84,8 +95,8 @@ fun NotesScreen(
                     ) 
                 },
                 navigationIcon = {
-                    IconButton(onClick = {}) {
-                        Icon(imageVector = Icons.Filled.Menu, contentDescription = "Menu")
+                    IconButton(onClick = { showSettingsSheet = true }) {
+                        Icon(imageVector = Icons.Filled.Menu, contentDescription = "Меню")
                     }
                 },
                 actions = {
@@ -106,7 +117,10 @@ fun NotesScreen(
         },
         floatingActionButton = {
             FloatingActionButton(
-                onClick = { showAddNoteSheet = true },
+                onClick = { 
+                    noteToEdit = null
+                    showAddNoteSheet = true 
+                },
                 containerColor = MaterialTheme.colorScheme.primaryContainer,
                 contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                 shape = RoundedCornerShape(16.dp)
@@ -165,25 +179,41 @@ fun NotesScreen(
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     itemsIndexed(notes, key = { _, note -> note.id }) { index, note ->
-                    NoteItem(
-                        note = note,
-                        index = index,
-                        onDeleteClick = { viewModel.deleteNote(note.id) }
-                    )
+                        NoteItem(
+                            note = note,
+                            index = index,
+                            onClick = {
+                                noteToEdit = note
+                                showAddNoteSheet = true
+                            },
+                            onDeleteClick = { viewModel.deleteNote(note.id) }
+                        )
+                    }
                 }
             }
         }
     }
         
     if (showAddNoteSheet) {
-            AddNoteBottomSheet(
-                onDismiss = { showAddNoteSheet = false },
-                onSave = { title, content ->
+        AddNoteBottomSheet(
+            note = noteToEdit,
+            onDismiss = { showAddNoteSheet = false },
+            onSave = { id, title, content ->
+                if (id != null) {
+                    viewModel.updateNote(id, title, content)
+                } else {
                     viewModel.addNote(title, content)
-                    showAddNoteSheet = false
                 }
-            )
-        }
+                showAddNoteSheet = false
+            }
+        )
+    }
+
+    if (showSettingsSheet) {
+        SettingsBottomSheet(
+            viewModel = viewModel,
+            onDismiss = { showSettingsSheet = false }
+        )
     }
 }
 
@@ -191,6 +221,7 @@ fun NotesScreen(
 fun NoteItem(
     note: Note,
     index: Int,
+    onClick: () -> Unit,
     onDeleteClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -211,7 +242,7 @@ fun NoteItem(
     }
 
     Card(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth().clickable(onClick = onClick),
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(
             containerColor = containerColor,
@@ -270,13 +301,91 @@ fun NoteItem(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AddNoteBottomSheet(
-    onDismiss: () -> Unit,
-    onSave: (String, String) -> Unit
+fun SettingsBottomSheet(
+    viewModel: NotesViewModel,
+    onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    var title by remember { mutableStateOf("") }
-    var content by remember { mutableStateOf("") }
+    val context = LocalContext.current
+    val isSyncing by viewModel.isSyncing.collectAsStateWithLifecycle()
+
+    val googleSignInLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+            try {
+                val account = task.getResult(com.google.android.gms.common.api.ApiException::class.java)
+                if (account != null) {
+                    viewModel.syncNotes(account)
+                }
+            } catch (e: Exception) {
+                // handle error
+            }
+        }
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.background,
+        shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 32.dp, end = 32.dp, top = 16.dp, bottom = 48.dp)
+        ) {
+            Text(
+                text = "Настройки",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(bottom = 24.dp)
+            )
+
+            Button(
+                onClick = {
+                    val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                        .requestEmail()
+                        .requestScopes(Scope("https://www.googleapis.com/auth/drive.appdata"))
+                        .build()
+                    val mGoogleSignInClient = GoogleSignIn.getClient(context, gso)
+                    googleSignInLauncher.launch(mGoogleSignInClient.signInIntent)
+                },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                ),
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                enabled = !isSyncing
+            ) {
+                if (isSyncing) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        strokeWidth = 2.dp
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text("Синхронизация...", modifier = Modifier.padding(vertical = 8.dp))
+                } else {
+                    Text("Синхронизация с Google Drive", modifier = Modifier.padding(vertical = 8.dp))
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AddNoteBottomSheet(
+    note: Note?,
+    onDismiss: () -> Unit,
+    onSave: (Int?, String, String) -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var title by remember { mutableStateOf(note?.title ?: "") }
+    var content by remember { mutableStateOf(note?.content ?: "") }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -349,7 +458,8 @@ fun AddNoteBottomSheet(
                     onClick = {
                         if (title.isNotBlank() || content.isNotBlank()) {
                             onSave(
-                                title.ifBlank { "Untitled" }, 
+                                note?.id,
+                                title.ifBlank { "Без названия" }, 
                                 content
                             )
                         }
